@@ -41,11 +41,59 @@ temperature, gate voltage, and drain current:
 **Main lesson:** the simplest model that performs just as well is the better engineering
 model.
 
+### Quadratic experiment — tested and rejected
+
+Added a `temperature²` feature (four inputs: temperature, temperature², gate voltage,
+drain current) to test whether modeling curvature beats the plain linear fit. It didn't —
+validation/test error was slightly *worse* and the model more complex, so the linear
+3-feature model stands. Same lesson, confirmed: don't add complexity that doesn't pay
+for itself.
+
+## Model validation & safe deployment
+
+The final phase turned a good model into a *deployable* one — and drew a hard line between
+machine learning and safety.
+
+**Validation**
+- Inspected residuals vs. temperature — random scatter around zero, no systematic bias or
+  leftover curvature.
+- Tested and rejected the `temperature²` feature (above).
+- Finalized the linear 3-feature model.
+
+**Final model**
+
+| | |
+|---|---|
+| Features | temperature, gate voltage, drain current |
+| λ (L2) | 0.01 |
+| Test RMSE | 0.7639 mΩ |
+| Worst test under-prediction | ≈ 2.15 mΩ (the dangerous direction for thermal margin) |
+
+**Safe prediction wrapper** (`predict_rds_on_safe`) — validates every input *before* it
+reaches the model:
+- range / unit checks against validated operating bounds,
+- shape checks (exactly three features, with matching weights and scaling statistics),
+- rejects NaN and infinity in both inputs and stored model parameters,
+- on any failure, raises and commands the controller into reduced-power **safe mode**.
+
+**Deterministic safety stays in control** — design principles established this phase:
+- hard over-temperature and over-current limits run **independently of the ML model**,
+- safe-mode behavior defined for model *or* sensor failure,
+- fault-clear **debouncing** and gradual recovery to avoid chattering,
+- temperature-**rise-rate** monitoring as an early-warning signal,
+- detector-selection criteria, in priority order: (1) meet the required critical-fault
+  detection rate, (2) stay within the maximum acceptable detection delay, (3) *then*
+  minimize false trips — accepting the inherent trade-off between filtering noise and
+  detection delay.
+
+**Main lesson:** ML may sharpen the *estimate*, but deterministic safety protection must
+always remain in control. The model advises; the hard limits decide.
+
 ### Next step
 
-Add a `temperature²` feature to capture curvature — giving four inputs (temperature,
-temperature², gate voltage, drain current) — and test whether modeling the nonlinearity
-beats the plain linear fit.
+Port the validated 3-feature predictor and its safety layer to embedded C for an MCU
+(fixed-point math, no dynamic allocation), keeping the deterministic limits as a separate,
+independently verified module.
 
 ## Running
 
